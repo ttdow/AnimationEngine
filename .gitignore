@@ -1,7 +1,9 @@
+.vs/
 ALL_BUILD.dir/
 AnimationEngine.dir/
 CMakeFiles/
 Debug/
+Release/
 x64/
 ZERO_CHECK.dir/
 
