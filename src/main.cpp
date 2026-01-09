@@ -1,6 +1,3 @@
-#define VOLK_IMPLEMENTATION
-#define VMA_IMPLEMENTATION
-
 #include "App.h"
 
 #include <iostream>
@@ -21,10 +18,6 @@ int main(int argc, char* argv[])
     catch (const std::exception& e)
     {
         std::cerr << e.what() << std::endl;
-
-        std::cout << "Inside catch.\n";
-
-        app.reset();
 
         return EXIT_FAILURE;
     }

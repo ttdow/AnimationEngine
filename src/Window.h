@@ -6,6 +6,9 @@
 
 #include <GLFW/glfw3.h>
 
+#include <cstdint>
+#include <vector>
+
 namespace Engine
 {
 	class Window
@@ -13,6 +16,12 @@ namespace Engine
 	public:
 
 		Window();
+		~Window();
+		void Update();
+
+		std::vector<const char*> GetRequiredExtensions() const;
+		GLFWwindow* GetGLFWwindow() const { return window; }
+		int CheckClose() const { return glfwWindowShouldClose(window); }
 
 	private:
 
