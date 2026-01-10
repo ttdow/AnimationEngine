@@ -21,6 +21,7 @@
 #include "Window.h"
 #include "VulkanStructs.h"
 #include "SwapchainManager.h"
+#include "VulkanPipeline.h"
 
 #include <cstdint>
 #include <vector>
@@ -72,12 +73,14 @@ namespace Engine
 		VkQueue graphicsQueue = VK_NULL_HANDLE;
 		VkQueue presentQueue = VK_NULL_HANDLE;
 		std::unique_ptr<SwapchainManager> swapchainManager;
+		std::unique_ptr<VulkanPipeline> pipeline;
 
 		void CreateInstance();
 		void CreateSurface();
 		void PickPhysicalDevice();
 		void CreateLogicalDevice();
 		void CreateSwapchain();
+		void CreatePipeline();
 
 		static bool CheckValidationLayerSupport(const std::vector<const char*>& layers);
 		static std::vector<const char*> GetRequiredExtensions(const Window& window, bool enableValidationLayers);

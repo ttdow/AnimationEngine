@@ -2,7 +2,8 @@
 
 namespace Engine
 {
-	SwapchainManager::SwapchainManager(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkDevice device)
+	SwapchainManager::SwapchainManager(Window& window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkDevice device) :
+		window(window), surface(surface), device(device)
 	{
 		SwapChainSupportDetails swapchainSupport = QuerySwapChainSupport(physicalDevice, surface);
 		VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapchainSupport.formats);
@@ -97,6 +98,19 @@ namespace Engine
 		}
 	}
 
+	SwapchainManager::~SwapchainManager()
+	{
+		for (VkImageView& imageView : swapChainImageViews)
+		{
+			vkDestroyImageView(device, imageView, nullptr);
+		}
+
+		if (swapChain != VK_NULL_HANDLE)
+		{
+			vkDestroySwapchainKHR(device, swapChain, nullptr);
+		}
+	}
+
 	SwapChainSupportDetails SwapchainManager::QuerySwapChainSupport(VkPhysicalDevice physDevice, VkSurfaceKHR surface) const
 	{
 		SwapChainSupportDetails details;
@@ -168,7 +182,7 @@ namespace Engine
 
 		int width, height;
 
-		glfwGetFramebufferSize(window, &width, &height);
+		glfwGetFramebufferSize(window.GetGLFWwindow(), &width, &height);
 
 		VkExtent2D actualExtent =
 		{
@@ -180,5 +194,41 @@ namespace Engine
 		actualExtent.height = std::clamp(actualExtent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height);
 
 		return actualExtent;
+	}
+
+	QueueFamilyIndices SwapchainManager::FindQueueFamilies(VkPhysicalDevice physDevice) const
+	{
+		QueueFamilyIndices indices;
+
+		uint32_t queueFamilyCount = 0;
+		vkGetPhysicalDeviceQueueFamilyProperties(physDevice, &queueFamilyCount, nullptr);
+
+		std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+		vkGetPhysicalDeviceQueueFamilyProperties(physDevice, &queueFamilyCount, queueFamilies.data());
+
+		for (size_t i = 0; i < queueFamilies.size(); i++)
+		{
+			const VkQueueFamilyProperties& queueFamily = queueFamilies[i];
+
+			VkBool32 presentSupport = false;
+			vkGetPhysicalDeviceSurfaceSupportKHR(physDevice, i, surface, &presentSupport);
+			if (presentSupport)
+			{
+				indices.presentFamily = i;
+			}
+
+			if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
+			{
+				indices.graphicsFamily = i;
+			}
+
+			// Early out.
+			if (indices.IsComplete())
+			{
+				break;
+			}
+		}
+
+		return indices;
 	}
 }

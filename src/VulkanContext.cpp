@@ -15,10 +15,16 @@ namespace Engine
 		CreateLogicalDevice();
 		volkLoadDevice(device);
 		CreateSwapchain();
+		CreatePipeline();
 	}
 
 	VulkanContext::~VulkanContext()
 	{
+		if (swapchainManager)
+		{
+			swapchainManager.reset();
+		}
+
 		if (device != VK_NULL_HANDLE)
 		{
 			vkDestroyDevice(device, nullptr);
@@ -216,7 +222,12 @@ namespace Engine
 
 	void VulkanContext::CreateSwapchain()
 	{
-		swapchainManager = std::make_unique<SwapchainManager>();
+		swapchainManager = std::make_unique<SwapchainManager>(window, physicalDevice, surface, device);
+	}
+
+	void VulkanContext::CreatePipeline()
+	{
+		pipeline = std::make_unique<VulkanPipeline>(device);
 	}
 
 	bool VulkanContext::CheckValidationLayerSupport(const std::vector<const char*>& layers)

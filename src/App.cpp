@@ -24,7 +24,6 @@ void App::InitializeVulkan()
 
 	/*
 	SetupDebugMessenger();
-	CreateSwapChain();
 	CreateRenderPass();
 	CreateGraphicsPipeline();
 	CreateFramebuffers();
@@ -80,16 +79,6 @@ void App::Cleanup()
 		vkDestroyRenderPass(device, renderPass, nullptr);
 	}
 
-	for (auto imageView : swapChainImageViews)
-	{
-		vkDestroyImageView(device, imageView, nullptr);
-	}
-
-	if (swapChain != VK_NULL_HANDLE)
-	{
-		vkDestroySwapchainKHR(device, swapChain, nullptr);
-	}
-
 	if (debugMessenger != VK_NULL_HANDLE)
 	{
 		DestroyDebugUtilsMessenger(instance, debugMessenger, nullptr);
@@ -115,102 +104,6 @@ void App::SetupDebugMessenger()
 	if (result != VK_SUCCESS)
 	{
 		throw std::runtime_error("Failed to create Vulkan debug utility messenger!");
-	}
-}
-
-void App::CreateSwapChain()
-{
-	SwapChainSupportDetails swapChainSupport = QuerySwapChainSupport(physicalDevice);
-
-	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(swapChainSupport.formats);
-	VkPresentModeKHR presentMode = ChooseSwapPresentMode(swapChainSupport.presentModes);
-	VkExtent2D extent = ChooseSwapExtent(swapChainSupport.capabilities);
-
-	swapChainImageFormat = surfaceFormat.format;
-	swapChainExtent = extent;
-
-	uint32_t imageCount = swapChainSupport.capabilities.minImageCount + 1;
-
-	std::cout << "Swapchain Image Count: " << imageCount << '\n';
-
-	const uint32_t maxImageCount = swapChainSupport.capabilities.maxImageCount;
-	if (maxImageCount > 0 && imageCount > maxImageCount)
-	{
-		imageCount = maxImageCount;
-	}
-
-	VkSwapchainCreateInfoKHR createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	createInfo.pNext = nullptr;
-	createInfo.surface = surface;
-	createInfo.minImageCount = imageCount;
-	createInfo.imageFormat = surfaceFormat.format;
-	createInfo.imageColorSpace = surfaceFormat.colorSpace;
-	createInfo.imageExtent = extent;
-	createInfo.imageArrayLayers = 1;
-	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-	QueueFamilyIndices indices = FindQueueFamilies(physicalDevice);
-	uint32_t queueFamilyIndices[] =
-	{
-		indices.graphicsFamily.value(),
-		indices.presentFamily.value()
-	};
-
-	if (indices.graphicsFamily != indices.presentFamily)
-	{
-		createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-		createInfo.queueFamilyIndexCount = 2;
-		createInfo.pQueueFamilyIndices = queueFamilyIndices;
-	}
-	else
-	{
-		createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-		createInfo.queueFamilyIndexCount = 0;
-		createInfo.pQueueFamilyIndices = nullptr;
-	}
-
-	createInfo.preTransform = swapChainSupport.capabilities.currentTransform;
-	createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-	createInfo.presentMode = presentMode;
-	createInfo.clipped = VK_TRUE;
-	createInfo.oldSwapchain = VK_NULL_HANDLE;
-
-	VkResult result = vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain);
-	if (result != VK_SUCCESS)
-	{
-		throw std::runtime_error("Failed to create swap chain!");
-	}
-
-	vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
-	swapChainImages.resize(imageCount);
-	vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
-
-	swapChainImageViews.resize(swapChainImages.size());
-
-	for (size_t i = 0; i < swapChainImages.size(); i++)
-	{
-		VkImageViewCreateInfo viewCreateInfo{};
-		viewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-		viewCreateInfo.pNext = nullptr;
-		viewCreateInfo.image = swapChainImages[i];
-		viewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-		viewCreateInfo.format = swapChainImageFormat;
-		viewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
-		viewCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		viewCreateInfo.subresourceRange.baseMipLevel = 0;
-		viewCreateInfo.subresourceRange.levelCount = 1;
-		viewCreateInfo.subresourceRange.baseArrayLayer = 0;
-		viewCreateInfo.subresourceRange.layerCount = 1;
-
-		result = vkCreateImageView(device, &viewCreateInfo, nullptr, &swapChainImageViews[i]);
-		if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to create swap chain image views!");
-		}
 	}
 }
 

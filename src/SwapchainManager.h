@@ -10,6 +10,7 @@
 #include <volk/volk.h>
 
 #include "VulkanStructs.h"
+#include "Window.h"
 
 #include <iostream>
 #include <vector>
@@ -21,10 +22,15 @@ namespace Engine
 	{
 	public:
 
-		SwapchainManager(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkDevice device);
+		SwapchainManager() = delete;
+		SwapchainManager(Window& window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkDevice device);
+		~SwapchainManager();
 
 	private:
 
+		Window& window;
+		VkSurfaceKHR surface = VK_NULL_HANDLE;
+		VkDevice device = VK_NULL_HANDLE;
 		VkSwapchainKHR swapChain = VK_NULL_HANDLE;
 		VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
 		VkExtent2D swapChainExtent{};
@@ -36,5 +42,6 @@ namespace Engine
 		void PrintSurfaceFormat(const VkSurfaceFormatKHR& format);
 		VkPresentModeKHR ChooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 		VkExtent2D ChooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
+		QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice physDevice) const;
 	};
 }
