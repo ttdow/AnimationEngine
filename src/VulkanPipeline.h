@@ -10,6 +10,7 @@
 #include <volk/volk.h>
 
 #include <vector>
+#include <iostream>
 
 namespace Engine
 {
@@ -18,12 +19,24 @@ namespace Engine
 	public:
 
 		VulkanPipeline() = delete;
-		VulkanPipeline(VkDevice device);
+		VulkanPipeline(VkDevice& device);
 		~VulkanPipeline();
+
+		void Clear();
+		void SetLayout();
+		void SetShaders(VkShaderModule& vertexShader, VkShaderModule& fragmentShader);
+		void SetInputTopology(VkPrimitiveTopology topology);
+		void SetPolygonMode(VkPolygonMode polygonMode);
+		void SetCullMode(VkCullModeFlags cullModeFlags, VkFrontFace frontFace);
+		void SetMultisamplingNone();
+		void DisableBlending();
+		void DisableDepthTest();
+		void SetColorAttachmentFormat(VkFormat format);
+		void Build();
 
 	private:
 
-		VkDevice device;
+		VkDevice& device;
 		VkPipeline pipeline = VK_NULL_HANDLE;
 		VkPipelineLayout layout = VK_NULL_HANDLE;
 
@@ -35,9 +48,5 @@ namespace Engine
 		VkPipelineDepthStencilStateCreateInfo depthStencil;
 		VkPipelineRenderingCreateInfo renderInfo;
 		VkFormat colorAttachmentFormat;
-
-		void Clear();
-		void Build();
-
 	};
 }

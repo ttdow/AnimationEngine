@@ -32,4 +32,15 @@ namespace Engine
 		std::vector<VkSurfaceFormatKHR> formats;
 		std::vector<VkPresentModeKHR> presentModes;
 	};
+
+	struct PhysicalDevice
+	{
+		VkPhysicalDevice device = VK_NULL_HANDLE;
+		VkPhysicalDeviceProperties properties{};
+		VkPhysicalDeviceFeatures features{};
+		uint32_t rating = 0;
+
+		QueueFamilyIndices queueFamilyIndices;
+		SwapChainSupportDetails swapChainSupportDetails;
+	};
 }

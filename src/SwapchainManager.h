@@ -26,6 +26,11 @@ namespace Engine
 		SwapchainManager(Window& window, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkDevice device);
 		~SwapchainManager();
 
+		VkSwapchainKHR& GetSwapchain() { return swapChain; }
+		
+		std::vector<VkImageView> swapChainImageViews;
+		VkExtent2D swapChainExtent{};
+
 	private:
 
 		Window& window;
@@ -33,9 +38,7 @@ namespace Engine
 		VkDevice device = VK_NULL_HANDLE;
 		VkSwapchainKHR swapChain = VK_NULL_HANDLE;
 		VkFormat swapChainImageFormat = VK_FORMAT_UNDEFINED;
-		VkExtent2D swapChainExtent{};
 		std::vector<VkImage> swapChainImages;
-		std::vector<VkImageView> swapChainImageViews;
 
 		SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice physDevice, VkSurfaceKHR surface) const;
 		VkSurfaceFormatKHR ChooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
