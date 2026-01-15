@@ -9,8 +9,11 @@
 
 #include <volk/volk.h>
 
+#include "VulkanStructs.h"
+
 #include <vector>
 #include <iostream>
+#include <array>
 
 namespace Engine
 {
