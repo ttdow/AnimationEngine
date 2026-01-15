@@ -34,11 +34,15 @@ namespace Engine
 		void SetColorAttachmentFormat(VkFormat format);
 		void Build();
 
+		VkPipeline& GetPipeline() { return pipeline; }
+		VkPipelineLayout& GetLayout() { return layout; }
+
+
 	private:
 
 		VkDevice& device;
-		VkPipeline pipeline = VK_NULL_HANDLE;
 		VkPipelineLayout layout = VK_NULL_HANDLE;
+		VkPipeline pipeline = VK_NULL_HANDLE;
 
 		std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 		VkPipelineInputAssemblyStateCreateInfo inputAssembly;

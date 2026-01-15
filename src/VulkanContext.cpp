@@ -15,6 +15,7 @@ namespace Engine
 		PickPhysicalDevice();
 		CreateLogicalDevice();
 		volkLoadDevice(device);
+		CreateAllocator();
 		CreateSwapchain();
 		CreatePipeline();
 		CreateCommandPool();
@@ -80,7 +81,7 @@ namespace Engine
 
 	void VulkanContext::Draw()
 	{
-		// Nothing yet.
+		DrawFrame();
 	}
 
 	void VulkanContext::WaitForIdle() const
@@ -106,7 +107,7 @@ namespace Engine
 		enableValidationLayers = CheckValidationLayerSupport(availableValidationLayers, requiredValidationLayers, true);
 
 		// Determine the required instance extensions and verify they are available.
-		const bool haveRequiredExtensions = CheckInstanceExtensionSupport(availableInstanceExtensions, requiredInstanceExtensions, true);
+		const bool haveRequiredExtensions = CheckInstanceExtensionSupport(availableInstanceExtensions, true);
 		if (!haveRequiredExtensions)
 		{
 			throw std::runtime_error("The host device does not support the required windowing extensions!");
@@ -296,9 +297,29 @@ namespace Engine
 		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 	}
 
+	void VulkanContext::CreateAllocator()
+	{
+		VmaVulkanFunctions vmaFuncs{};
+		vmaFuncs.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
+		vmaFuncs.vkGetDeviceProcAddr = vkGetDeviceProcAddr;
+
+		VmaAllocatorCreateInfo info{};
+		info.physicalDevice = physicalDevice.device;
+		info.device = device;
+		info.instance = instance;
+		info.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+		info.pVulkanFunctions = &vmaFuncs;
+
+		VkResult result = vmaCreateAllocator(&info, &allocator);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create Vulkan Memory Allocator (VMA)!");
+		}
+	}
+
 	void VulkanContext::CreateSwapchain()
 	{
-		swapchainManager = std::make_unique<SwapchainManager>(window, physicalDevice.device, surface, device);
+		swapchainManager = std::make_unique<SwapchainManager>(window, physicalDevice, surface, device);
 	}
 
 	void VulkanContext::CreatePipeline()
@@ -319,7 +340,7 @@ namespace Engine
 		pipeline->SetMultisamplingNone();
 		pipeline->DisableBlending();
 		pipeline->DisableDepthTest();
-		pipeline->SetColorAttachmentFormat(VK_FORMAT_R32G32B32A32_SFLOAT);
+		pipeline->SetColorAttachmentFormat(VK_FORMAT_R8G8B8A8_SRGB);
 		pipeline->Build();
 
 		vkDestroyShaderModule(device, vertShaderModule, nullptr);
@@ -385,7 +406,7 @@ namespace Engine
 		}
 	}
 
-	void VulkanContext::RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex)
+	void VulkanContext::RecordCommandBuffer(VkCommandBuffer& cmd, uint32_t imageIndex)
 	{
 		VkCommandBufferBeginInfo beginInfo{};
 		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -393,49 +414,40 @@ namespace Engine
 		beginInfo.flags = 0; //VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT
 		beginInfo.pInheritanceInfo = nullptr;
 
-		VkResult result = vkBeginCommandBuffer(commandBuffer, &beginInfo);
+		VkResult result = vkBeginCommandBuffer(cmd, &beginInfo);
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to begin recording command buffer!");
 		}
 
+		TransitionImage(cmd, swapchainManager->GetImage(imageIndex), VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_ASPECT_COLOR_BIT);
+
 		VkRenderingAttachmentInfo colorAttachment = {};
 		colorAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
 		colorAttachment.pNext = nullptr;
-		colorAttachment.imageView = swapchainManager->swapChainImageViews[imageIndex];
+		colorAttachment.imageView = swapchainManager->GetImageView(imageIndex);
 		colorAttachment.imageLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		colorAttachment.clearValue.color = { {1.0f, 0.0f, 1.0f, 1.0f } };
 		colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 
-		/*
-		VkRenderingAttachmentInfo depthAttachment = {};
-		depthAttachment.sType = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO;
-		depthAttachment.pNext = nullptr;
-		depthAttachment.imageView = depthBuffer->GetView();
-		depthAttachment.imageLayout = VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-		depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-		depthAttachment.clearValue.depthStencil.depth = 1.0f;
-		depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		*/
-
 		VkRenderingInfo renderInfo = {};
 		renderInfo.sType = VK_STRUCTURE_TYPE_RENDERING_INFO;
 		renderInfo.pNext = nullptr;
-		renderInfo.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, swapchainManager->swapChainExtent };
+		renderInfo.renderArea = VkRect2D{ VkOffset2D { 0, 0 }, swapchainManager->GetExtent()};
 		renderInfo.layerCount = 1;
 		renderInfo.colorAttachmentCount = 1;
 		renderInfo.pColorAttachments = &colorAttachment;
 		renderInfo.pDepthAttachment = nullptr; // &depthAttachment;
 		renderInfo.pStencilAttachment = nullptr;
 
-		vkCmdBeginRendering(commandBuffer, &renderInfo);
+		vkCmdBeginRendering(cmd, &renderInfo);
 
 		VkViewport viewport = {};
-		viewport.x = 0;
-		viewport.y = 0;
-		viewport.width = static_cast<float>(swapchainManager->swapChainExtent.width);
-		viewport.height = static_cast<float>(swapchainManager->swapChainExtent.height);
+		viewport.x = 0.0f;
+		viewport.y = 0.0f;
+		viewport.width = static_cast<float>(swapchainManager->GetExtent().width);
+		viewport.height = static_cast<float>(swapchainManager->GetExtent().height);
 		viewport.minDepth = 0.0f;
 		viewport.maxDepth = 1.0f;
 
@@ -444,109 +456,25 @@ namespace Engine
 		VkRect2D scissor = {};
 		scissor.offset.x = 0;
 		scissor.offset.y = 0;
-		scissor.extent.width = viewport.width;
-		scissor.extent.height = viewport.height;
-
-		vkCmdSetLineWidth(cmd, 10.0f);
+		scissor.extent.width = swapchainManager->GetExtent().width;
+		scissor.extent.height = swapchainManager->GetExtent().height;
 
 		vkCmdSetScissor(cmd, 0, 1, &scissor);
 
+		vkCmdSetLineWidth(cmd, 1.0f);
+
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
 
-		VkBuffer vertexBuffers[] = { vertexBuffer->GetBuffer() };
-		VkDeviceSize offsets[] = { 0 };
-
-		vkCmdBindVertexBuffers(cmd, 0, 1, vertexBuffers, offsets);
-
-		vkCmdBindIndexBuffer(cmd, indexBuffer->GetBuffer(), 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdDrawIndexed(cmd, indicesCount, 1, 0, 0, 0);
+		vkCmdDraw(cmd, 3, 1, 0, 0);
 
 		vkCmdEndRendering(cmd);
+
+		TransitionImage(cmd, swapchainManager->GetImage(imageIndex), VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		result = vkEndCommandBuffer(cmd);
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to end recording frame command buffer!");
-		}
-
-		VkCommandBufferSubmitInfo cmdInfo = {};
-		cmdInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
-		cmdInfo.pNext = nullptr;
-		cmdInfo.commandBuffer = cmd;
-		cmdInfo.deviceMask = 0;
-
-		VkSemaphoreSubmitInfo waitInfo = {};
-		waitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		waitInfo.pNext = nullptr;
-		waitInfo.semaphore = GetCurrentFrame().swapchainSemaphore;
-		waitInfo.stageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT_KHR;
-		waitInfo.deviceIndex = 0;
-		waitInfo.value = 1;
-
-		VkSemaphoreSubmitInfo signalInfo = {};
-		signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
-		signalInfo.pNext = nullptr;
-		signalInfo.semaphore = GetCurrentFrame().renderSemaphore;
-		signalInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-		signalInfo.deviceIndex = 0;
-		signalInfo.value = 1;
-
-		VkSubmitInfo2 submitInfo = {};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
-		submitInfo.pNext = nullptr;
-		submitInfo.waitSemaphoreInfoCount = 1;
-		submitInfo.pWaitSemaphoreInfos = &waitInfo;
-		submitInfo.signalSemaphoreInfoCount = 1;
-		submitInfo.pSignalSemaphoreInfos = &signalInfo;
-		submitInfo.commandBufferInfoCount = 1;
-		submitInfo.pCommandBufferInfos = &cmdInfo;
-
-		result = vkQueueSubmit2(instance->GetGraphicsQueue(), 1, &submitInfo, GetCurrentFrame().renderFence);
-		if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to submit frame command buffer to graphics queue!");
-		}
-
-		VkPresentInfoKHR presentInfo = {};
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.pNext = nullptr;
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &swapchain->GetSwapchain();
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores = &GetCurrentFrame().renderSemaphore;
-		presentInfo.pImageIndices = &swapchainImageIndex;
-
-		result = vkQueuePresentKHR(instance->GetPresentQueue(), &presentInfo);
-		if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to queue present of swapchain image!");
-		}
-
-		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, graphicsPipeline);
-
-		VkViewport viewport{};
-		viewport.x = 0.0f;
-		viewport.y = 0.0f;
-		viewport.width = static_cast<float>(swapChainExtent.width);
-		viewport.height = static_cast<float>(swapChainExtent.height);
-		viewport.minDepth = 0.0f;
-		viewport.maxDepth = 1.0f;
-		vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-		VkRect2D scissor{};
-		scissor.offset = { 0, 0 };
-		scissor.extent = swapChainExtent;
-		vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
-
-		vkCmdEndRenderPass(commandBuffer);
-
-		result = vkEndCommandBuffer(commandBuffer);
-		if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to record command buffer!");
 		}
 	}
 
@@ -558,17 +486,25 @@ namespace Engine
 			throw std::runtime_error("Failed to wait for in flight fence!");
 		}
 
+		uint32_t imageIndex = 0;
+		result = vkAcquireNextImageKHR(device, swapchainManager->GetSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		{
+			physicalDevice.swapChainSupportDetails = QuerySwapChainSupport(physicalDevice);
+			vkDestroySurfaceKHR(instance, surface, nullptr);
+			CreateSurface();
+			swapchainManager->RecreateSwapchain(surface, physicalDevice);
+			return;
+		}
+		else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
+		{
+			throw std::runtime_error("Failed to acquire next swapchain image!");
+		}
+
 		result = vkResetFences(device, 1, &inFlightFences[currentFrame]);
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to reset in flight fence!");
-		}
-
-		uint32_t imageIndex = 0;
-		result = vkAcquireNextImageKHR(device, swapchainManager->GetSwapchain(), UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
-		if (result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Failed to acquire next swapchain image!");
 		}
 
 		result = vkResetCommandBuffer(commandBuffers[currentFrame], 0);
@@ -601,7 +537,7 @@ namespace Engine
 			throw std::runtime_error("Failed to submit draw command buffer!");
 		}
 
-		VkSwapchainKHR swapChains[] = { swapChain };
+		VkSwapchainKHR swapChains[] = { swapchainManager->GetSwapchain() };
 
 		VkPresentInfoKHR presentInfo{};
 		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
@@ -614,12 +550,47 @@ namespace Engine
 		presentInfo.pResults = nullptr;
 
 		result = vkQueuePresentKHR(presentQueue, &presentInfo);
-		if (result != VK_SUCCESS)
+		if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || window.framebufferResized)
+		{
+			window.framebufferResized = false;
+			physicalDevice.swapChainSupportDetails = QuerySwapChainSupport(physicalDevice);
+			vkDestroySurfaceKHR(instance, surface, nullptr);
+			CreateSurface();
+			swapchainManager->RecreateSwapchain(surface, physicalDevice);
+		}
+		else if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to submit to present queue!");
 		}
 
 		currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+	}
+
+	void VulkanContext::TransitionImage(VkCommandBuffer& cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout, VkImageAspectFlags aspectFlags)
+	{
+		VkImageMemoryBarrier2 imageBarrier = {};
+		imageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		imageBarrier.pNext = nullptr;
+		imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		imageBarrier.srcAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT;
+		imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+		imageBarrier.dstAccessMask = VK_ACCESS_2_MEMORY_WRITE_BIT | VK_ACCESS_2_MEMORY_READ_BIT;
+		imageBarrier.oldLayout = currentLayout;
+		imageBarrier.newLayout = newLayout;
+		imageBarrier.subresourceRange.aspectMask = aspectFlags;
+		imageBarrier.subresourceRange.baseMipLevel = 0;
+		imageBarrier.subresourceRange.levelCount = VK_REMAINING_MIP_LEVELS;
+		imageBarrier.subresourceRange.baseArrayLayer = 0;
+		imageBarrier.subresourceRange.layerCount = VK_REMAINING_ARRAY_LAYERS;
+		imageBarrier.image = image;
+
+		VkDependencyInfo depInfo = {};
+		depInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		depInfo.pNext = nullptr;
+		depInfo.imageMemoryBarrierCount = 1;
+		depInfo.pImageMemoryBarriers = &imageBarrier;
+
+		vkCmdPipelineBarrier2(cmd, &depInfo);
 	}
 
 	bool VulkanContext::CheckValidationLayerSupport(std::vector<VkLayerProperties>& availableLayers, const std::vector<const char*>& requiredLayers, bool print)
@@ -671,7 +642,7 @@ namespace Engine
 		return true;
 	}
 
-	bool VulkanContext::CheckInstanceExtensionSupport(std::vector<VkExtensionProperties>& availableExtensions, const std::vector<const char*>& requiredExtensions, bool print)
+	bool VulkanContext::CheckInstanceExtensionSupport(std::vector<VkExtensionProperties>& availableExtensions, bool print)
 	{
 		// Query the host device's available instance extensions.
 		uint32_t extensionCount = 0;
@@ -698,6 +669,14 @@ namespace Engine
 		if (enableValidationLayers)
 		{
 			requiredInstanceExtensions.push_back("VK_EXT_debug_utils");
+		}
+
+		for (const VkExtensionProperties& extensionProperties : availableInstanceExtensions)
+		{
+			if (std::strcmp("VK_EXT_swapchain_colorspace", extensionProperties.extensionName) == 0)
+			{
+				requiredInstanceExtensions.push_back("VK_EXT_swapchain_colorspace");
+			}
 		}
 
 		if (print)

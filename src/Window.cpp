@@ -7,9 +7,11 @@ namespace Engine
 		glfwInit();
 
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+		glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
 		window = glfwCreateWindow(WIDTH, HEIGHT, "Application", nullptr, nullptr);
+		glfwSetWindowUserPointer(window, this);
+		glfwSetFramebufferSizeCallback(window, FramebufferResizeCallback);
 	}
 
 	Window::~Window()
@@ -37,5 +39,11 @@ namespace Engine
 		std::vector<const char*> extensions(glfwExtensions, glfwExtensions + extensionCount);
 
 		return extensions;
+	}
+
+	void Window::FramebufferResizeCallback(GLFWwindow* window, int width, int height)
+	{
+		Window* win = reinterpret_cast<Window*>(glfwGetWindowUserPointer(window));
+		win->framebufferResized = true;
 	}
 }

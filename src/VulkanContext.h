@@ -13,7 +13,7 @@
 #define VMA_STATIC_VULKAN_FUNCTIONS 0
 #endif
 #ifndef VMA_DYNAMIC_VULKAN_FUNCTIONS
-#define VMA_DYNAMIC_VULKAN_FUNCTIONS 0
+#define VMA_DYNAMIC_VULKAN_FUNCTIONS 1
 #endif
 
 #include <vma/vk_mem_alloc.h>
@@ -97,6 +97,7 @@ namespace Engine
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
 		PhysicalDevice physicalDevice{};
 		VkDevice device = VK_NULL_HANDLE;
+		VmaAllocator allocator;
 		VkQueue graphicsQueue = VK_NULL_HANDLE;
 		VkQueue presentQueue = VK_NULL_HANDLE;
 		std::unique_ptr<SwapchainManager> swapchainManager;
@@ -112,17 +113,19 @@ namespace Engine
 		void CreateSurface();
 		void PickPhysicalDevice();
 		void CreateLogicalDevice();
+		void CreateAllocator();
 		void CreateSwapchain();
 		void CreatePipeline();
 		void CreateCommandPool();
 		void CreateCommandBuffers();
 		void CreateSyncObjects();
 		
-		void RecordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+		void RecordCommandBuffer(VkCommandBuffer& cmd, uint32_t imageIndex);
 		void DrawFrame();
+		void TransitionImage(VkCommandBuffer& cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout, VkImageAspectFlags aspectFlags);
 
 		static bool CheckValidationLayerSupport(std::vector<VkLayerProperties>& availableLayers, const std::vector<const char*>& requiredLayers, bool print = false);
-		bool CheckInstanceExtensionSupport(std::vector<VkExtensionProperties>& availableInstanceExtensions, const std::vector<const char*>& requiredExtensions, bool print = false);
+		bool CheckInstanceExtensionSupport(std::vector<VkExtensionProperties>& availableInstanceExtensions, bool print = false);
 		
 		uint32_t RatePhysicalDevice(PhysicalDevice& physDevice);
 		bool CheckDeviceExtensionSupport(const PhysicalDevice& physDevice) const;
