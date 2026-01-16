@@ -21,10 +21,27 @@ namespace Engine
 		CreateCommandPool();
 		CreateCommandBuffers();
 		CreateSyncObjects();
+		CreateVertexBuffer();
+		CreateIndexBuffer();
 	}
 
 	VulkanContext::~VulkanContext()
 	{
+		if (indexBuffer != VK_NULL_HANDLE)
+		{
+			vmaDestroyBuffer(allocator, indexBuffer, indexBufferAllocation);
+		}
+
+		if (vertexBuffer != VK_NULL_HANDLE)
+		{
+			vmaDestroyBuffer(allocator, vertexBuffer, vertexBufferAllocation);
+		}
+
+		if (immediateFence != VK_NULL_HANDLE)
+		{
+			vkDestroyFence(device, immediateFence, nullptr);
+		}
+
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
 			if (renderFinishedSemaphores[i] != VK_NULL_HANDLE)
@@ -43,6 +60,11 @@ namespace Engine
 			}
 		}
 
+		if (immediatePool != VK_NULL_HANDLE)
+		{
+			vkDestroyCommandPool(device, immediatePool, nullptr);
+		}
+
 		if (commandPool != VK_NULL_HANDLE)
 		{
 			vkDestroyCommandPool(device, commandPool, nullptr);
@@ -56,6 +78,11 @@ namespace Engine
 		if (swapchainManager)
 		{
 			swapchainManager.reset();
+		}
+
+		if (allocator != VK_NULL_HANDLE)
+		{
+			vmaDestroyAllocator(allocator);
 		}
 
 		if (device != VK_NULL_HANDLE)
@@ -347,6 +374,31 @@ namespace Engine
 		vkDestroyShaderModule(device, fragShaderModule, nullptr);
 	}
 
+	void VulkanContext::CreateLinePipeline()
+	{
+		linePipeline = std::make_unique<VulkanPipeline>(device);
+
+		std::vector<char> vertShaderCode = ReadFile("shaders/vert.spv");
+		std::vector<char> fragShaderCode = ReadFile("shader/frag.spv");
+
+		VkShaderModule vertShaderModule = CreateShaderModule(vertShaderCode);
+		VkShaderModule fragShaderModule = CreateShaderModule(fragShaderCode);
+
+		linePipeline->SetLayout();
+		linePipeline->SetShaders(vertShaderModule, fragShaderModule);
+		linePipeline->SetInputTopology(VK_PRIMITIVE_TOPOLOGY_LINE_LIST);
+		linePipeline->SetPolygonMode(VK_POLYGON_MODE_FILL);
+		linePipeline->SetCullMode(VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
+		linePipeline->SetMultisamplingNone();
+		linePipeline->DisableBlending();
+		linePipeline->DisableDepthTest();
+		linePipeline->SetColorAttachmentFormat(VK_FORMAT_R8G8B8A8_SRGB);
+		linePipeline->Build();
+
+		vkDestroyShaderModule(device, vertShaderModule, nullptr);
+		vkDestroyShaderModule(device, fragShaderModule, nullptr);
+	}
+
 	void VulkanContext::CreateCommandPool()
 	{
 		VkCommandPoolCreateInfo poolInfo{};
@@ -359,6 +411,18 @@ namespace Engine
 		if (result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Failed to create command pool!");
+		}
+
+		VkCommandPoolCreateInfo immediatePoolInfo{};
+		immediatePoolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+		immediatePoolInfo.pNext = nullptr;
+		immediatePoolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+		immediatePoolInfo.queueFamilyIndex = physicalDevice.queueFamilyIndices.graphicsFamily.value();
+
+		result = vkCreateCommandPool(device, &immediatePoolInfo, nullptr, &immediatePool);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create immediate mode command pool!");
 		}
 	}
 
@@ -378,6 +442,19 @@ namespace Engine
 		{
 			throw std::runtime_error("Failed to allocate command buffers!");
 		}
+
+		VkCommandBufferAllocateInfo immediateAllocInfo{};
+		immediateAllocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		immediateAllocInfo.pNext = nullptr;
+		immediateAllocInfo.commandPool = immediatePool;
+		immediateAllocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		immediateAllocInfo.commandBufferCount = 1;
+
+		result = vkAllocateCommandBuffers(device, &immediateAllocInfo, &immediateCmd);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to allocate immediate mode command buffer!");
+		}
 	}
 
 	void VulkanContext::CreateSyncObjects()
@@ -395,6 +472,12 @@ namespace Engine
 		fenceInfo.pNext = nullptr;
 		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
+		VkResult result = vkCreateFence(device, &fenceInfo, nullptr, &immediateFence);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create immediate mode fence!");
+		}
+
 		for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
 			if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
@@ -404,6 +487,152 @@ namespace Engine
 				throw std::runtime_error("Failed to create synchronization objects for a frame!");
 			}
 		}
+	}
+
+	void VulkanContext::CreateVertexBuffer()
+	{
+		const uint64_t vertexBufferSize = sizeof(Vertex) * vertices.size();
+
+		// Create a device-local vertex buffer.
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.pNext = nullptr;
+		bufferInfo.size = vertexBufferSize;
+		bufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferInfo.flags = 0;
+
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		allocInfo.flags = 0;
+
+		VkResult result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &vertexBuffer, &vertexBufferAllocation, &vertexBufferAllocationInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create vertex buffer using VMA!");
+		}
+
+		VkBufferDeviceAddressInfo deviceAddressInfo{};
+		deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+		deviceAddressInfo.pNext = nullptr;
+		deviceAddressInfo.buffer = vertexBuffer;
+
+		// Create a device-visisble staging buffer.
+		VkBufferCreateInfo stagingBufferInfo{};
+		stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		stagingBufferInfo.pNext = nullptr;
+		stagingBufferInfo.size = vertexBufferSize;
+		stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		stagingBufferInfo.flags = 0;
+
+		VmaAllocationCreateInfo stagingAllocInfo{};
+		stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+		VkBuffer stagingBuffer;
+		VmaAllocation stagingBufferAllocation;
+		VmaAllocationInfo stagingBufferAllocationInfo;
+
+		result = vmaCreateBuffer(allocator, &stagingBufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingBufferAllocation, &stagingBufferAllocationInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create vertex staging buffer using VMA!");
+		}
+
+		// Copy host-local vertex data into device-visible staging buffer.
+		void* data = nullptr;
+		vmaMapMemory(allocator, stagingBufferAllocation, &data);
+		std::memcpy(data, vertices.data(), static_cast<size_t>(vertexBufferSize));
+
+		vmaFlushAllocation(allocator, stagingBufferAllocation, 0, vertexBufferSize);
+		vmaUnmapMemory(allocator, stagingBufferAllocation);
+
+		// Copy device-visible staging buffer into device-local vertex buffer.
+		ImmediateSubmit([&](VkCommandBuffer cmd) {
+			VkBufferCopy copy{};
+			copy.dstOffset = 0;
+			copy.srcOffset = 0;
+			copy.size = vertexBufferSize;
+
+			vkCmdCopyBuffer(cmd, stagingBuffer, vertexBuffer, 1, &copy);
+		});
+
+		// Cleanup staging buffer.
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAllocation);
+	}
+
+	void VulkanContext::CreateIndexBuffer()
+	{
+		const uint64_t indexBufferSize = sizeof(uint32_t) * indices.size();
+
+		// Create a device-local index buffer.
+		VkBufferCreateInfo bufferInfo{};
+		bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		bufferInfo.pNext = nullptr;
+		bufferInfo.size = indexBufferSize;
+		bufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+		bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		bufferInfo.flags = 0;
+
+		VmaAllocationCreateInfo allocInfo{};
+		allocInfo.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE;
+		allocInfo.flags = 0;
+
+		VkResult result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &indexBuffer, &indexBufferAllocation, &indexBufferAllocationInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create vertex buffer using VMA!");
+		}
+
+		VkBufferDeviceAddressInfo deviceAddressInfo{};
+		deviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+		deviceAddressInfo.pNext = nullptr;
+		deviceAddressInfo.buffer = indexBuffer;
+
+		// Create a device-visisble staging buffer.
+		VkBufferCreateInfo stagingBufferInfo{};
+		stagingBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+		stagingBufferInfo.pNext = nullptr;
+		stagingBufferInfo.size = indexBufferSize;
+		stagingBufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+		stagingBufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+		stagingBufferInfo.flags = 0;
+
+		VmaAllocationCreateInfo stagingAllocInfo{};
+		stagingAllocInfo.usage = VMA_MEMORY_USAGE_AUTO;
+		stagingAllocInfo.flags = VMA_ALLOCATION_CREATE_MAPPED_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+
+		VkBuffer stagingBuffer;
+		VmaAllocation stagingBufferAllocation;
+		VmaAllocationInfo stagingBufferAllocationInfo;
+
+		result = vmaCreateBuffer(allocator, &stagingBufferInfo, &stagingAllocInfo, &stagingBuffer, &stagingBufferAllocation, &stagingBufferAllocationInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create vertex staging buffer using VMA!");
+		}
+
+		// Copy host-local vertex data into device-visible staging buffer.
+		void* data = nullptr;
+		vmaMapMemory(allocator, stagingBufferAllocation, &data);
+		std::memcpy(data, indices.data(), static_cast<size_t>(indexBufferSize));
+
+		vmaFlushAllocation(allocator, stagingBufferAllocation, 0, indexBufferSize);
+		vmaUnmapMemory(allocator, stagingBufferAllocation);
+
+		// Copy device-visible staging buffer into device-local vertex buffer.
+		ImmediateSubmit([&](VkCommandBuffer cmd) {
+			VkBufferCopy copy{};
+			copy.dstOffset = 0;
+			copy.srcOffset = 0;
+			copy.size = indexBufferSize;
+
+			vkCmdCopyBuffer(cmd, stagingBuffer, indexBuffer, 1, &copy);
+			});
+
+		// Cleanup staging buffer.
+		vmaDestroyBuffer(allocator, stagingBuffer, stagingBufferAllocation);
 	}
 
 	void VulkanContext::RecordCommandBuffer(VkCommandBuffer& cmd, uint32_t imageIndex)
@@ -464,8 +693,13 @@ namespace Engine
 		vkCmdSetLineWidth(cmd, 1.0f);
 
 		vkCmdBindPipeline(cmd, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline->GetPipeline());
+		
+		VkDeviceSize offsets[] = { 0 };
+		vkCmdBindVertexBuffers(cmd, 0, 1, &vertexBuffer, offsets);
 
-		vkCmdDraw(cmd, 3, 1, 0, 0);
+		vkCmdBindIndexBuffer(cmd, indexBuffer, 0, VK_INDEX_TYPE_UINT32);
+
+		vkCmdDrawIndexed(cmd, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
 		vkCmdEndRendering(cmd);
 
@@ -907,5 +1141,70 @@ namespace Engine
 		}
 
 		return shaderModule;
+	}
+
+	void VulkanContext::ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function)
+	{
+		VkResult result = vkResetFences(device, 1, &immediateFence);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to reset immediate mode fence!");
+		}
+
+		result = vkResetCommandBuffer(immediateCmd, 0);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to reser immediate mode command buffer!");
+		}
+
+		VkCommandBuffer cmd = immediateCmd;
+
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pNext = nullptr;
+		beginInfo.pInheritanceInfo = nullptr;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+		result = vkBeginCommandBuffer(cmd, &beginInfo);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to begin immediate mode command buffer!");
+		}
+
+		function(cmd);
+
+		result = vkEndCommandBuffer(cmd);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to end immediate mode command buffer!");
+		}
+
+		VkCommandBufferSubmitInfo submitInfo{};
+		submitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+		submitInfo.pNext = nullptr;
+		submitInfo.commandBuffer = cmd;
+		submitInfo.deviceMask = 0;
+
+		VkSubmitInfo2 submit{};
+		submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
+		submit.pNext = nullptr;
+		submit.waitSemaphoreInfoCount = 0;
+		submit.pWaitSemaphoreInfos = nullptr;
+		submit.signalSemaphoreInfoCount = 0;
+		submit.pSignalSemaphoreInfos = nullptr;
+		submit.commandBufferInfoCount = 1;
+		submit.pCommandBufferInfos = &submitInfo;
+
+		result = vkQueueSubmit2(graphicsQueue, 1, &submit, immediateFence);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to submit immediate mode commands to graphics queue!");
+		}
+
+		result = vkWaitForFences(device, 1, &immediateFence, true, UINT64_MAX);
+		if (result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to wait for immediate mode fence!");
+		}
 	}
 }

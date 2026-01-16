@@ -35,6 +35,7 @@
 #include <optional>
 #include <set>
 #include <fstream>
+#include <functional>
 
 namespace Engine
 {
@@ -85,6 +86,19 @@ namespace Engine
 			"VK_KHR_swapchain"
 		};
 
+		const std::vector<Vertex> vertices =
+		{
+			{ { -0.5f, -0.5f, 0.0f, 1.0f }, { 1.0f, 0.0f, 0.0f, 1.0f } },
+			{ {  0.5f, -0.5f, 0.0f, 1.0f }, { 0.0f, 1.0f, 0.0f, 1.0f } },
+			{ {  0.5f,  0.5f, 0.0f, 1.0f }, { 0.0f, 0.0f, 1.0f, 1.0f } },
+			{ { -0.5f,  0.5f, 0.0f, 1.0f }, { 1.0f, 1.0f, 1.0f, 1.0f } }
+		};
+
+		const std::vector<uint32_t> indices =
+		{
+			0, 1, 2, 2, 3, 0
+		};
+
 		constexpr static uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 		uint32_t currentFrame = 0;
 
@@ -101,16 +115,29 @@ namespace Engine
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
 		PhysicalDevice physicalDevice{};
 		VkDevice device = VK_NULL_HANDLE;
-		VmaAllocator allocator;
+		VmaAllocator allocator = VK_NULL_HANDLE;
 		VkQueue graphicsQueue = VK_NULL_HANDLE;
 		VkQueue presentQueue = VK_NULL_HANDLE;
 		std::unique_ptr<SwapchainManager> swapchainManager;
 		std::unique_ptr<VulkanPipeline> pipeline;
+		std::unique_ptr<VulkanPipeline> linePipeline;
 		VkCommandPool commandPool = VK_NULL_HANDLE;
 		std::vector<VkCommandBuffer> commandBuffers;
 		std::vector<VkSemaphore> imageAvailableSemaphores;
 		std::vector<VkSemaphore> renderFinishedSemaphores;
 		std::vector<VkFence> inFlightFences;
+
+		VkBuffer vertexBuffer = VK_NULL_HANDLE;
+		VmaAllocation vertexBufferAllocation = VK_NULL_HANDLE;
+		VmaAllocationInfo vertexBufferAllocationInfo{};
+
+		VkBuffer indexBuffer = VK_NULL_HANDLE;
+		VmaAllocation indexBufferAllocation = VK_NULL_HANDLE;
+		VmaAllocationInfo indexBufferAllocationInfo{};
+
+		VkFence immediateFence = VK_NULL_HANDLE;
+		VkCommandPool immediatePool = VK_NULL_HANDLE;
+		VkCommandBuffer immediateCmd = VK_NULL_HANDLE;
 
 		void CreateInstance();
 		void SetupDebugMessenger();
@@ -120,10 +147,13 @@ namespace Engine
 		void CreateAllocator();
 		void CreateSwapchain();
 		void CreatePipeline();
+		void CreateLinePipeline();
 		void CreateCommandPool();
 		void CreateCommandBuffers();
 		void CreateSyncObjects();
-		
+		void CreateVertexBuffer();
+		void CreateIndexBuffer();
+
 		void RecordCommandBuffer(VkCommandBuffer& cmd, uint32_t imageIndex);
 		void DrawFrame();
 		void TransitionImage(VkCommandBuffer& cmd, VkImage image, VkImageLayout currentLayout, VkImageLayout newLayout, VkImageAspectFlags aspectFlags);
@@ -141,5 +171,7 @@ namespace Engine
 	
 		static std::vector<char> ReadFile(const std::string& filename);
 		VkShaderModule CreateShaderModule(const std::vector<char>& code) const;
+
+		void ImmediateSubmit(std::function<void(VkCommandBuffer cmd)>&& function);
 	};
 }
