@@ -8,6 +8,8 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 add_executable(AnimationEngine
   src/main.cpp
+  src/App.h
+  src/App.cpp
 )
 
 target_compile_features(AnimationEngine PRIVATE cxx_std_20)
